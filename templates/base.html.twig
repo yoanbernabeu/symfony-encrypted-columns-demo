@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{% block title %}Carnet clients{% endblock %}</title>
+        <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22><text y=%221.2em%22 font-size=%2296%22>🔐</text></svg>">
+        <style>
+            :root {
+                --bg: #f4f1ea; --ink: #1d1b16; --muted: #6b665c; --card: #fff; --line: #e3ded2;
+                --app: #1f7a4d; --app-soft: #e3f3ea; --ko-soft: #fde8e5;
+                --term: #14161a; --term-head: #1c1f24; --term-line: #2a2e35; --term-ink: #c9d1d9; --term-muted: #6e7681; --term-hl: #23272e;
+                --leak: #ff6b5b; --safe: #7ee2a8; --digest: #f2b45a; --scope: #8ab4ff;
+            }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+            main { max-width: 1480px; margin: 0 auto; padding: 32px 16px 64px; }
+            h1 { font-size: 2.2rem; margin: 0; letter-spacing: -.02em; }
+            .lead { color: var(--muted); margin: 4px 0 28px; font-size: 1.1rem; }
+            code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+            /* Les deux colonnes : l'application à gauche, la base à droite */
+            .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
+            .stack { display: grid; gap: 24px; min-width: 0; }
+            @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+
+            .pane { border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, .06); }
+            .pane-head { padding: 16px 20px; display: flex; align-items: center; gap: 12px; }
+            .pane-head h2 { font-size: 1.15rem; margin: 0; }
+            .pane-head p { margin: 0; font-size: .9rem; opacity: .75; }
+            .icon { font-size: 1.8rem; }
+            .pane-body { overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 11px 12px; white-space: nowrap; }
+            th { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; }
+
+            /* Panneau « application » */
+            .app { background: var(--card); border: 1px solid var(--line); }
+            .app .pane-head { background: var(--app-soft); color: var(--app); }
+            .app th { color: var(--muted); border-bottom: 1px solid var(--line); }
+            .app td { border-bottom: 1px solid var(--line); font-size: .92rem; }
+            .app tr.hl td { background: var(--app-soft); }
+
+            /* Panneaux « base de données » */
+            .term { background: var(--term); color: var(--term-ink); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+            .term .pane-head { background: var(--term-head); border-bottom: 1px solid var(--term-line); font-family: system-ui, sans-serif; }
+            .term .prompt { padding: 12px 20px; color: var(--term-muted); border-bottom: 1px solid var(--term-line); font-size: .9rem; }
+            .term .prompt b { color: var(--term-ink); font-weight: 500; }
+            .term th { color: var(--term-muted); border-bottom: 1px solid var(--term-line); }
+            .term td { border-bottom: 1px solid var(--term-line); font-size: .8rem; }
+            .term tr.hl td { background: var(--term-hl); }
+            .score { margin-left: auto; display: flex; gap: 8px; font-family: ui-monospace, monospace; font-size: .85rem; }
+            .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 12px 20px; font-size: .8rem; color: var(--term-muted); border-top: 1px solid var(--term-line); }
+            .legend strong { color: var(--term-ink); font-weight: 500; }
+
+            /* Les valeurs : lisible, chiffrée, empreinte, scope */
+            .leak, .bytes, .digest, .scope { padding: 2px 6px; border-radius: 4px; }
+            .leak { color: var(--leak); background: rgba(255, 107, 91, .14); }
+            .bytes { color: var(--safe); background: rgba(126, 226, 168, .10); transition: background .15s, color .15s; }
+            .bytes.hl-key { background: var(--safe); color: var(--term); }
+            .digest { color: var(--digest); background: rgba(242, 180, 90, .12); }
+            .scope { color: var(--scope); background: rgba(138, 180, 255, .12); }
+            .note { text-transform: none; letter-spacing: 0; color: var(--scope); font-weight: 400; }
+            .null { color: var(--term-muted); font-style: italic; }
+            .lock { font-size: .8em; }
+
+            /* Recherche et formulaire */
+            .panel { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-top: 24px; }
+            .panel h2 { font-size: 1.15rem; margin: 0 0 12px; }
+            form.row { display: flex; flex-wrap: wrap; gap: 10px; }
+            input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; flex: 1 1 180px; background: #fff; color: var(--ink); }
+            button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; cursor: pointer; }
+            .results { display: grid; gap: 10px; margin-top: 16px; }
+            .result { padding: 12px 16px; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+            .result code { font-size: .85rem; color: var(--muted); }
+            .result.ok { background: var(--app-soft); }
+            .result.ko { background: var(--ko-soft); }
+            .tag { color: #b5761b; }
+            .compare { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: .9rem; margin-top: 4px; }
+            .compare .bytes { font-family: ui-monospace, monospace; color: #8a2c1f; background: #fff; border: 1px solid #f3c4bc; }
+            .compare .neq { font-size: 1.4rem; font-weight: 700; color: #c0392b; }
+            .compare .why { color: var(--muted); font-style: italic; }
+            .hint { margin: 14px 0 0; color: var(--muted); font-size: .95rem; }
+        </style>
+    </head>
+    <body>
+        <main>{% block body %}{% endblock %}</main>
+    </body>
+</html>

@@ -1,0 +1,193 @@
+{% extends 'base.html.twig' %}
+
+{% set rows = raw_rows('customer') %}
+{% set encrypted = encrypted_fields('App\\Entity\\Customer') %}
+{% set keys = data_keys(rows) %}
+
+{% block body %}
+    <h1>🔐 Carnet clients</h1>
+    <p class="lead">Les mêmes données, vues par l'application et par quelqu'un qui a volé la base.</p>
+
+    <div class="split">
+        {# Ce que voit l'application : les entités chargées par Doctrine #}
+        <section class="pane app">
+            <div class="pane-head">
+                <span class="icon">👩‍💻</span>
+                <div><h2>Ce que voit l'application</h2><p>Les entités chargées par Doctrine</p></div>
+            </div>
+            <div class="pane-body">
+                <table>
+                    <thead>
+                        <tr>
+                            {% for field, label in {name: 'Nom', email: 'Email', phone: 'Téléphone', birthDate: 'Naissance'} %}
+                                <th>{{ label }}{% if field in encrypted %} <span class="lock" title="Colonne chiffrée en base">🔒</span>{% endif %}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for customer in customers %}
+                            <tr data-row="{{ customer.id }}">
+                                <td>{{ customer.name }}</td>
+                                <td>{{ customer.email }}</td>
+                                <td>{{ customer.phone }}</td>
+                                <td>{{ customer.birthDate ? customer.birthDate|date('d/m/Y') }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <div class="stack">
+            {# Ce que voit un pirate : le contenu brut de la table #}
+            {% set cells = [] %}
+            {% for row in rows %}
+                {% for column, value in row|filter((v, k) => k != 'id' and not (k ends with '_index')) %}
+                    {% set cells = cells|merge([(value|dump_cell).type]) %}
+                {% endfor %}
+            {% endfor %}
+            <section class="pane term">
+                <div class="pane-head">
+                    <span class="icon">🕵️</span>
+                    <div><h2>Ce que voit un pirate</h2><p>Le contenu brut de la table, tel qu'il sort d'un dump</p></div>
+                    <div class="score">
+                        <span class="leak">⚠ {{ cells|filter(t => t == 'text')|length }} lisibles</span>
+                        <span class="bytes">🔒 {{ cells|filter(t => t == 'binary')|length }} chiffrées</span>
+                    </div>
+                </div>
+                <div class="prompt">sqlite&gt; <b>SELECT * FROM customer;</b></div>
+                <div class="pane-body">
+                    <table>
+                        <thead><tr>{% for column in rows|first|default({})|keys %}<th>{{ column }}</th>{% endfor %}</tr></thead>
+                        <tbody>
+                            {% for row in rows %}
+                                <tr data-row="{{ row.id }}">
+                                    {% for column, value in row %}
+                                        {% set cell = value|dump_cell %}
+                                        <td>
+                                            {% if column == 'id' %}
+                                                {{ value }}
+                                            {% elseif cell.type == 'null' %}
+                                                <span class="null">NULL</span>
+                                            {% elseif column ends with '_index' %}
+                                                <span class="digest" title="Empreinte : révèle seulement si deux lignes ont la même valeur"># {{ value|slice(0, 8) }}…</span>
+                                            {% elseif cell.type == 'text' %}
+                                                <span class="leak">⚠ {{ cell.value }}</span>
+                                            {% else %}
+                                                <span class="bytes" title="{{ cell.length }} octets"{% if cell.ref %} data-ref="{{ cell.ref }}"{% endif %}>🔒 …{{ cell.hex }}</span>
+                                            {% endif %}
+                                        </td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="legend">
+                    <span><span class="leak">⚠ …</span> lisible</span>
+                    {% if 'binary' in cells %}<span><span class="bytes">🔒 …</span> chiffré</span>{% endif %}
+                    {% if rows|first|default({})|keys|filter(k => k ends with '_index') %}<span><span class="digest"># …</span> empreinte (blind index)</span>{% endif %}
+                </div>
+            </section>
+
+            {# Les clés de données : apparaît dès que la table du store existe #}
+            {% if keys %}
+                <section class="pane term">
+                    <div class="pane-head">
+                        <span class="icon">🗝️</span>
+                        <div><h2>Les clés de données</h2><p>Le store : chaque clé est elle-même chiffrée par la clé maître, qui reste dans le KMS</p></div>
+                    </div>
+                    <div class="prompt">sqlite&gt; <b>SELECT * FROM key_management_data_keys;</b></div>
+                    <div class="pane-body">
+                        <table>
+                            <thead><tr><th>id</th><th>scope <span class="note">= key: de #[Encrypted]</span></th><th>master_key_id</th><th>key_material</th><th>protège</th></tr></thead>
+                            <tbody>
+                                {% for key in keys %}
+                                    <tr data-key="{{ key.ref }}">
+                                        <td>…{{ key.id }}</td>
+                                        <td><span class="scope">{{ key.scope }}</span></td>
+                                        <td>{{ key.master_key_id }}</td>
+                                        <td><span class="bytes">🔒 …{{ key.key_material }}</span></td>
+                                        <td>{{ key.uses }} valeur{{ key.uses > 1 ? 's' }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="legend">
+                        <strong>{{ keys|reduce((sum, key) => sum + key.uses, 0) }} valeurs chiffrées → {{ keys|length }} clés de données → {{ keys|length }} appels au KMS par requête</strong>
+                    </div>
+                </section>
+            {% endif %}
+        </div>
+    </div>
+
+    <section class="panel">
+        <h2>🔎 Retrouver un client par son email</h2>
+        <form class="row" method="get" action="{{ path('customer_index') }}">
+            <input type="email" name="email" value="{{ email }}" placeholder="ada@example.com" required>
+            <button>Rechercher</button>
+        </form>
+        {% if email %}
+            <div class="results">
+                <div class="result {{ found ? 'ok' : 'ko' }}">
+                    <strong>{{ found ? '✅ ' ~ found.name : '❌ Aucun client trouvé' }}</strong>
+                    <code>findOneBy(['email' => '{{ email }}'])</code>
+                    {% if 'email' in encrypted %}
+                        {# Pourquoi ça échoue : la valeur envoyée par Doctrine ne ressemble pas à celle stockée #}
+                        {% set sent = doctrine_value('App\\Entity\\Customer', 'email', email)|dump_cell %}
+                        {% set match = customers|filter(c => c.email == email)|first %}
+                        <div class="compare">
+                            <span>Doctrine envoie à la base <span class="bytes">🔒 …{{ sent.hex }}</span></span>
+                            {% if match %}
+                                {% set stored = (rows|filter(r => r.id == match.id)|first).email|dump_cell %}
+                                <span class="neq">≠</span>
+                                <span>stocké pour {{ match.name }} <span class="bytes">🔒 …{{ stored.hex }}</span></span>
+                            {% endif %}
+                            <span class="why">même email, chiffré deux fois : deux résultats différents</span>
+                        </div>
+                    {% endif %}
+                </div>
+                {% if foundByIndex is defined %}
+                    <div class="result {{ foundByIndex ? 'ok' : 'ko' }}">
+                        <strong>{{ foundByIndex ? '✅ ' ~ foundByIndex.name : '❌ Aucun client trouvé' }}</strong>
+                        <code>findOneBy(['emailIndex' => '<span class="tag">{{ tag }}</span>'])</code>
+                    </div>
+                {% endif %}
+            </div>
+            {% if 'email' in encrypted %}
+                <p class="hint">
+                    Une valeur chiffrée change à chaque écriture : on ne peut plus la comparer.
+                    {% if foundByIndex is defined %}Le blind index compare des empreintes, qui sont toujours identiques pour un même email.{% endif %}
+                </p>
+            {% endif %}
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <h2>➕ Ajouter un client</h2>
+        <form class="row" method="post" action="{{ path('customer_new') }}">
+            <input name="name" placeholder="Nom" required>
+            <input type="email" name="email" placeholder="Email" required>
+            <input name="phone" placeholder="Téléphone">
+            <input type="date" name="birthDate">
+            <button>Ajouter</button>
+        </form>
+    </section>
+
+    <script>
+        // Survol d'une ligne : la même ligne s'allume dans les deux panneaux
+        document.querySelectorAll('tr[data-row]').forEach(row => {
+            const same = () => document.querySelectorAll(`tr[data-row="${row.dataset.row}"]`);
+            row.addEventListener('mouseenter', () => same().forEach(r => r.classList.add('hl')));
+            row.addEventListener('mouseleave', () => same().forEach(r => r.classList.remove('hl')));
+        });
+
+        // Survol d'une clé de données : les valeurs qu'elle protège s'allument
+        document.querySelectorAll('tr[data-key]').forEach(row => {
+            const cells = () => document.querySelectorAll(`[data-ref="${row.dataset.key}"]`);
+            row.addEventListener('mouseenter', () => { row.classList.add('hl'); cells().forEach(c => c.classList.add('hl-key')); });
+            row.addEventListener('mouseleave', () => { row.classList.remove('hl'); cells().forEach(c => c.classList.remove('hl-key')); });
+        });
+    </script>
+{% endblock %}
