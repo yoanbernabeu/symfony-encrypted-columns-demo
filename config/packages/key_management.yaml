@@ -1,0 +1,7 @@
+key_management:
+    clients:
+        # En dev : un KMS local, la clé maître est dans .env.local
+        # En prod : un vrai KMS, par exemple 'aws-kms://default?region=eu-west-1'
+        default: 'sodium://?keys[app-key]=%env(DEV_KMS_KEY)%'
+    store:
+        key_id: app-key

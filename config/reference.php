@@ -170,6 +170,15 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         marshaller?: scalar|Param|null, // The marshaller service to use for this pool.
  *     }>,
  * }
+ * @psalm-type UidConfig = bool|array{
+ *     enabled?: bool|Param, // Default: true
+ *     default_uuid_version?: 7|6|4|1|Param, // Default: 7
+ *     name_based_uuid_version?: 5|3|Param, // Default: 5
+ *     name_based_uuid_namespace?: scalar|Param|null,
+ *     time_based_uuid_version?: 7|6|1|Param, // Default: 7
+ *     time_based_uuid_node?: scalar|Param|null,
+ *     uuid47_secret?: scalar|Param|null, // A high-entropy secret used by the "uuid47_transformer" service. Defaults to the "kernel.secret" parameter; the service is not registered when neither is defined. // Default: null
+ * }
  * @psalm-type FrameworkConfig = array{
  *     secret?: scalar|Param|null, // A secret that must not change. The options that sign data default to it and take a list of secrets to rotate theirs.
  *     http_method_override?: bool|Param, // Set true to enable support for the '_method' request parameter to determine the intended HTTP method on POST requests. // Default: false
@@ -262,7 +271,7 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *     mailer?: mixed,
  *     notifier?: mixed,
  *     rate_limiter?: mixed,
- *     uid?: mixed,
+ *     uid?: UidConfig,
  *     html_sanitizer?: mixed,
  *     webhook?: mixed,
  *     remote_event?: mixed,
@@ -605,28 +614,56 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         ...<string, mixed>
  *     },
  * }
+ * @psalm-type KeyManagementConfig = Param|bool|string|array{
+ *     enabled?: bool|Param, // Default: true
+ *     default_client?: scalar|Param|null, // Name of the default client (must match an entry of "clients"); inferred when only one client is registered. // Default: null
+ *     clients?: Param|string|array<string, Param|string|array{ // Default: []
+ *         dsn?: string|Param,
+ *         members?: array<string, scalar|Param|null>,
+ *         retired?: list<scalar|Param|null>,
+ *     }>,
+ *     store?: array{ // Data key store: payloads then refer to a stored data key instead of carrying it, so the KMS is reached once per key and per process, and that key can be rewrapped under another provider without rewriting a payload.
+ *         connection?: scalar|Param|null, // Service id of the DBAL connection holding the table. // Default: "doctrine.dbal.default_connection"
+ *         client?: scalar|Param|null, // Name of the client wrapping the data keys this store creates (must match an entry of "clients"); defaults to the default client. // Default: null
+ *         key_id?: scalar|Param|null, // Master key wrapping the data keys this store creates (backend-specific: alias, ARN, key URL, ...).
+ *         table?: scalar|Param|null, // Name of the table holding the wrapped data keys. // Default: "key_management_data_keys"
+ *         read_self_contained?: bool|Param, // Whether a payload carrying its own wrapped data key is still read, through the default client. On while migrating to the stored format, off afterwards: such a payload resolves no row, so nothing the store checks applies to it. // Default: false
+ *         bind_wrapping_context?: bool|Param, // Whether the backend authenticates the reference and the scope of each data key as it wraps it. Off by default: not every backend accepts authenticated data, and turning it on needs the stored keys rewrapped. // Default: false
+ *         max_age?: mixed, // Seconds after which the current data key of a scope is retired in favour of a fresh one; the default of 30 days keeps what one key seals under the collision bound of the random 96-bit IV each payload carries. 0 retires the key on every call, null never retires it. // Default: 2592000
+ *     },
+ *     doctrine_dbal?: array{
+ *         types?: array<string, array{ // Default: []
+ *             type?: string|Param, // Doctrine type converting the value before it is encrypted.
+ *             key?: string|Param, // Master key encrypting the values, or the scope of their data key when "store" is configured.
+ *         }>,
+ *     },
+ * }
  * @psalm-type ConfigType = array{
  *     imports?: ImportsConfig,
  *     parameters?: ParametersConfig,
  *     services?: ServicesConfig,
  *     router?: RouterConfig,
  *     cache?: CacheConfig,
+ *     uid?: UidConfig,
  *     framework?: FrameworkConfig,
  *     doctrine?: DoctrineConfig,
  *     doctrine_migrations?: DoctrineMigrationsConfig,
  *     twig?: TwigConfig,
  *     twig_extra?: TwigExtraConfig,
+ *     key_management?: KeyManagementConfig,
  *     "when@dev"?: array{
  *         imports?: ImportsConfig,
  *         parameters?: ParametersConfig,
  *         services?: ServicesConfig,
  *         router?: RouterConfig,
  *         cache?: CacheConfig,
+ *         uid?: UidConfig,
  *         framework?: FrameworkConfig,
  *         doctrine?: DoctrineConfig,
  *         doctrine_migrations?: DoctrineMigrationsConfig,
  *         twig?: TwigConfig,
  *         twig_extra?: TwigExtraConfig,
+ *         key_management?: KeyManagementConfig,
  *     },
  *     "when@prod"?: array{
  *         imports?: ImportsConfig,
@@ -634,11 +671,13 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         services?: ServicesConfig,
  *         router?: RouterConfig,
  *         cache?: CacheConfig,
+ *         uid?: UidConfig,
  *         framework?: FrameworkConfig,
  *         doctrine?: DoctrineConfig,
  *         doctrine_migrations?: DoctrineMigrationsConfig,
  *         twig?: TwigConfig,
  *         twig_extra?: TwigExtraConfig,
+ *         key_management?: KeyManagementConfig,
  *     },
  *     "when@test"?: array{
  *         imports?: ImportsConfig,
@@ -646,11 +685,13 @@ use Symfony\Component\Config\Loader\ParamConfigurator as Param;
  *         services?: ServicesConfig,
  *         router?: RouterConfig,
  *         cache?: CacheConfig,
+ *         uid?: UidConfig,
  *         framework?: FrameworkConfig,
  *         doctrine?: DoctrineConfig,
  *         doctrine_migrations?: DoctrineMigrationsConfig,
  *         twig?: TwigConfig,
  *         twig_extra?: TwigExtraConfig,
+ *         key_management?: KeyManagementConfig,
  *     },
  *     ...<string, ExtensionType|array{ // extra keys must follow the when@%env% pattern or match an extension alias
  *         imports?: ImportsConfig,
