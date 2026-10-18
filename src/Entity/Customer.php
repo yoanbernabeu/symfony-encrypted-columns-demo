@@ -3,6 +3,7 @@
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\KeyManagement\Bridge\DoctrineOrm\Attribute\BlindIndexed;
 use Symfony\Component\KeyManagement\Bridge\DoctrineOrm\Attribute\Encrypted;
 
 #[ORM\Entity]
@@ -19,6 +20,10 @@ class Customer
     #[ORM\Column(length: 255)]
     #[Encrypted(key: 'customer.contact')]
     public string $email;
+
+    #[ORM\Column(length: 64, nullable: true)]
+    #[BlindIndexed('email', 'customer-email')]
+    public ?string $emailIndex = null;
 
     #[ORM\Column(nullable: true)]
     #[Encrypted(key: 'customer.contact')]
